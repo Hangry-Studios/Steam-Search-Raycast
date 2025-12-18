@@ -14,7 +14,7 @@
   },
   "commands": [
     {
-      "name": "steam-search",
+      "name": "steam search",
       "title": "Search Games",
       "description": "Search games on the Steam Store",
       "mode": "view"
