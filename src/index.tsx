@@ -80,6 +80,7 @@ export default function Command() {
     >
       {items.map((item) => (
         <Grid.Item
+<<<<<<< HEAD
           key={item.id}
           // Fixat f�r att matcha Raycasts ImageLike-typ
           content={{ source: item.image, fallback: Icon.GameController }}
@@ -96,6 +97,22 @@ export default function Command() {
               <Action.OpenInBrowser title="Open in Steam App" url={`steam://store/${item.id}`} />
             </ActionPanel>
           }
+=======
+            key={item.id}
+            content={{ source: item.image }}
+            title={item.name}
+            subtitle={item.price}
+            actions={
+                <ActionPanel>
+                    <Action.Push
+                        title="View Details"
+                        icon={Icon.Sidebar}
+                        target={<GameDetail appId={item.id} name={item.name} image={item.image} price={item.price} />}
+                    />
+                    <Action.OpenInBrowser url={`https://store.steampowered.com/app/${item.id}`} />
+                </ActionPanel>
+            }
+>>>>>>> 3884e2c (Fix TypeScript image content type)
         />
       ))}
     </Grid>
