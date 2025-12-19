@@ -1,5 +1,34 @@
 import { Grid, ActionPanel, Action, Detail, Icon } from "@raycast/api";
 import { useState, useEffect } from "react";
+import fetch from "node-fetch";
+
+// 1. Definitioner för att slippa "any" och TypeScript-fel
+interface SteamSearchItem {
+    id: number;
+    name: string;
+    price?: {
+        final: number;
+    };
+}
+
+interface SteamSearchResponse {
+    items: SteamSearchItem[];
+}
+
+interface SteamAppDetails {
+    [key: string]: {
+        success: boolean;
+        data: {
+            short_description?: string;
+            recommendations?: { total: number };
+            developers?: string[];
+            publishers?: string[];
+            release_date?: { date: string };
+            genres?: { description: string }[];
+            pc_requirements?: { minimum?: string };
+        };
+    };
+}
 
 export default function Command() {
     const [searchText, setSearchText] = useState("");
@@ -16,19 +45,18 @@ export default function Command() {
             setIsLoading(true);
             try {
                 const response = await fetch(
-                    `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(searchText)}&l=english&cc=US`
+                    `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(searchText)}&l=english&cc=US`,
                 );
-                const data = (await response.json()) as any;
+                const data = (await response.json()) as SteamSearchResponse;
 
                 if (data && data.items) {
                     setItems(
-                        data.items.map((item: any) => ({
+                        data.items.map((item) => ({
                             id: item.id.toString(),
                             name: item.name,
-                            // Vi använder Cloudflare-URL:en här för Grid-vyn
                             image: `https://cdn.cloudflare.steamstatic.com/steam/apps/${item.id}/header.jpg`,
                             price: item.price ? `$${item.price.final / 100}` : "Free to Play",
-                        }))
+                        })),
                     );
                 }
             } catch (error) {
@@ -53,7 +81,8 @@ export default function Command() {
             {items.map((item) => (
                 <Grid.Item
                     key={item.id}
-                    content={{ value: item.image, fallback: Icon.GameController }}
+                    // Fixat för att matcha Raycasts ImageLike-typ
+                    content={{ source: item.image, fallback: Icon.GameController }}
                     title={item.name}
                     subtitle={item.price}
                     actions={
@@ -63,7 +92,7 @@ export default function Command() {
                                 icon={Icon.Sidebar}
                                 target={<GameDetail appId={item.id} name={item.name} image={item.image} price={item.price} />}
                             />
-                            <Action.OpenInBrowser title="Open in Browser" url={`https://store.steampowered.com/app/${item.id}`} />
+                            <Action.OpenInBrowser url={`https://store.steampowered.com/app/${item.id}`} />
                             <Action.OpenInBrowser title="Open in Steam App" url={`steam://store/${item.id}`} />
                         </ActionPanel>
                     }
@@ -78,10 +107,7 @@ function GameDetail({ appId, name, image, price }: { appId: string; name: string
         description: string;
         reviews: string;
         developer: string;
-        publisher: string;
         releaseDate: string;
-        genres: string;
-        pcRequirements?: string;
     } | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -89,18 +115,15 @@ function GameDetail({ appId, name, image, price }: { appId: string; name: string
         async function fetchDetails() {
             try {
                 const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${appId}`);
-                const data = (await response.json()) as any;
+                const data = (await response.json()) as SteamAppDetails;
 
-                if (data[appId].success) {
-                    const gameData = data[appId].data;
+                if (data[appId] && data[appId].success) {
+                    const g = data[appId].data;
                     setDetails({
-                        description: gameData.short_description?.replace(/<[^>]*>?/gm, "") || "No description available.",
-                        reviews: gameData.recommendations ? `${gameData.recommendations.total.toLocaleString()} recommendations` : "N/A",
-                        developer: gameData.developers ? gameData.developers.join(", ") : "N/A",
-                        publisher: gameData.publishers ? gameData.publishers.join(", ") : "N/A",
-                        releaseDate: gameData.release_date?.date || "TBA",
-                        genres: gameData.genres ? gameData.genres.map((g: any) => g.description).join(", ") : "N/A",
-                        pcRequirements: gameData.pc_requirements?.minimum?.replace(/<[^>]*>?/gm, " "),
+                        description: g.short_description?.replace(/<[^>]*>?/gm, "") || "No description available.",
+                        reviews: g.recommendations ? `${g.recommendations.total.toLocaleString()} recommendations` : "N/A",
+                        developer: g.developers?.join(", ") || "N/A",
+                        releaseDate: g.release_date?.date || "TBA",
                     });
                 }
             } catch (error) {
@@ -112,57 +135,21 @@ function GameDetail({ appId, name, image, price }: { appId: string; name: string
         fetchDetails();
     }, [appId]);
 
-    const markdown = `
-# ${name}
-![Header](${image})
-
-### Description
-${details?.description || "Loading..."}
-
-${details?.pcRequirements ? `---\n### Minimum System Requirements\n${details.pcRequirements}` : ""}
-  `;
-
     return (
         <Detail
             isLoading={loading}
-            markdown={markdown}
-            navigationTitle={name}
+            markdown={`# ${name}\n![Header](${image})\n\n### Description\n${details?.description}`}
             metadata={
                 <Detail.Metadata>
                     <Detail.Metadata.Label title="Price" text={price} />
-                    <Detail.Metadata.Label title="Release Date" text={details?.releaseDate || "Loading..."} />
-                    <Detail.Metadata.Separator />
-                    <Detail.Metadata.Label title="Developer" text={details?.developer || "Loading..."} />
-                    <Detail.Metadata.Label title="Publisher" text={details?.publisher || "Loading..."} />
-                    <Detail.Metadata.Label title="Genres" text={details?.genres || "Loading..."} />
-                    <Detail.Metadata.Separator />
-                    <Detail.Metadata.Label
-                        title="Community Score"
-                        text={details?.reviews || "Loading..."}
-                        icon={Icon.Star}
-                    />
-                    <Detail.Metadata.Separator />
-                    <Detail.Metadata.Link
-                        title="Store Page"
-                        target={`https://store.steampowered.com/app/${appId}`}
-                        text="Open in Browser"
-                    />
-                    <Detail.Metadata.Link
-                        title="Store Page"
-                        target={`steam://store/${appId}`}
-                        text="Open in Steam Client"
-                    />
-                    <Detail.Metadata.Link
-                        title="Store Page"
-                        target={`https://steamdb.info/app/${appId}/`}
-                        text="View on SteamDB"
-                    />
+                    <Detail.Metadata.Label title="Developer" text={details?.developer} />
+                    <Detail.Metadata.Label title="Release Date" text={details?.releaseDate} />
+                    <Detail.Metadata.Label title="Score" text={details?.reviews} icon={Icon.Star} />
                 </Detail.Metadata>
             }
             actions={
                 <ActionPanel>
                     <Action.OpenInBrowser title="Open in Browser" url={`https://store.steampowered.com/app/${appId}`} />
-                    <Action.OpenInBrowser title="Open in Steam App" url={`steam://store/${appId}`} />
                     <Action.CopyToClipboard title="Copy App ID" content={appId} />
                 </ActionPanel>
             }
